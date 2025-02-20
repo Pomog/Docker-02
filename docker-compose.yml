@@ -1,0 +1,151 @@
+version: "3.9"
+
+services:
+  ##################################################################
+  # INVENTORY DATABASE (Postgres)
+  ##################################################################
+  inventory-db:
+    build:
+      context: ./inventory-database
+      dockerfile: Dockerfile
+    container_name: inventory-db
+    environment:
+      POSTGRES_USER: ${INVENTORY_DB_USER}
+      POSTGRES_PASSWORD: ${INVENTORY_DB_PASSWORD}
+      POSTGRES_DB: ${INVENTORY_DB_NAME}
+    ports:
+      - "5433:5432" # optional external mapping
+    volumes:
+      - inventory-db-volume:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  ##################################################################
+  # BILLING DATABASE (Postgres)
+  ##################################################################
+  billing-db:
+    build:
+      context: ./billing-database
+      dockerfile: Dockerfile
+    container_name: billing-db
+    environment:
+      POSTGRES_USER: ${BILLING_DB_USER}
+      POSTGRES_PASSWORD: ${BILLING_DB_PASSWORD}
+      POSTGRES_DB: ${BILLING_DB_NAME}
+    ports:
+      - "5434:5432"
+    volumes:
+      - billing-db-volume:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  ##################################################################
+  # RABBITMQ
+  ##################################################################
+  rabbit-queue:
+    build:
+      context: ./rabbitmq
+      dockerfile: Dockerfile
+    container_name: rabbit-queue
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "5672:5672"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  ##################################################################
+  # INVENTORY APP
+  ##################################################################
+  inventory-app:
+    build:
+      context: ./inventory-app
+      dockerfile: Dockerfile
+    container_name: inventory-app
+    depends_on:
+      - inventory-db
+    ports:
+      - "8081:${INVENTORY_APP_PORT}"
+    environment:
+      # DB info
+      DB_HOST: inventory-db
+      DB_PORT: "5432"
+      DB_USER: ${INVENTORY_DB_USER}
+      DB_PASS: ${INVENTORY_DB_PASSWORD}
+      DB_NAME: ${INVENTORY_DB_NAME}
+      # App port
+      APP_PORT: ${INVENTORY_APP_PORT}
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  ##################################################################
+  # BILLING APP
+  ##################################################################
+  billing-app:
+    build:
+      context: ./billing-app
+      dockerfile: Dockerfile
+    container_name: billing-app
+    depends_on:
+      - billing-db
+      - rabbit-queue
+    ports:
+      - "8082:${BILLING_APP_PORT}"
+    environment:
+      # DB
+      DB_HOST: billing-db
+      DB_PORT: "5432"
+      DB_USER: ${BILLING_DB_USER}
+      DB_PASS: ${BILLING_DB_PASSWORD}
+      DB_NAME: ${BILLING_DB_NAME}
+      # Rabbit
+      RABBITMQ_HOST: rabbit-queue
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_QUEUE: "billing_queue"
+      # App port
+      APP_PORT: ${BILLING_APP_PORT}
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  ##################################################################
+  # API GATEWAY
+  ##################################################################
+  api-gateway-app:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway-app
+    ports:
+      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+    volumes:
+      - api-gateway-volume:/var/logs/api-gateway
+    environment:
+      APP_PORT: ${GATEWAY_PORT}
+      INVENTORY_APP_HOST: inventory-app
+      INVENTORY_APP_PORT: ${INVENTORY_APP_PORT}
+      RABBITMQ_HOST: rabbit-queue
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_QUEUE: "billing_queue"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  inventory-db-volume:
+  billing-db-volume:
+  api-gateway-volume:
+
+
+networks:
+  app-network:
+    driver: bridge
