@@ -18,3 +18,22 @@ New-Item -Path README.md -ItemType "file" notepad README.md
 docker-compose logs api-gateway-app
 docker-compose logs billing-app > billing-app.log
 ```
+## 2. Prerequisites
+- Verify in PowerShell:
+```powershall
+node --version
+# v20.12.2
+npm --version
+# 10.5.0
+```
+## 3. Inventory App
+```powershall
+cd F:\my-docker-microservices2\inventory-app
+npm init -y
+```
+```powershall
+npm install express
+```
+- create server.js - minimal Express server
+
+## 3. Billing App
